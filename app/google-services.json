@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "167717772145",
+    "project_id": "storyai-6b611",
+    "storage_bucket": "storyai-6b611.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:167717772145:android:f2219c7cf00640941ef4d0",
+        "android_client_info": {
+          "package_name": "com.example.storyai"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "167717772145-brnjbhue5b02qaevg714nr0tgv2vksir.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDv2xvcloHaBTbdvHetDOtwRidLtAOGW8M"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "167717772145-brnjbhue5b02qaevg714nr0tgv2vksir.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
