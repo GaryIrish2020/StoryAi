@@ -32,12 +32,13 @@ class ChatViewModel @Inject constructor(
         _uiState.value = ChatUiState.Loading
         viewModelScope.launch {
             try {
-                // Reverted to a placeholder prompt. The server call will now succeed.
-                val initialMessage = storyRepository.generateDialogue(
-                    promptTemplate = "A short story about a topic with id: $storyId",
-                    char1Name = "Alice",
-                    char2Name = "Bob"
-                )
+                val preset = storyRepository.getStoryPreset(storyId)
+                if (preset == null) {
+                    _uiState.value = ChatUiState.Error("Story preset not found.")
+                    return@launch
+                }
+
+                val initialMessage = storyRepository.generateDialogue(preset)
                 _uiState.value = ChatUiState.Success(listOf(initialMessage))
             } catch (e: Exception) {
                 Log.e("ChatViewModel", "Error loading initial messages: ", e)

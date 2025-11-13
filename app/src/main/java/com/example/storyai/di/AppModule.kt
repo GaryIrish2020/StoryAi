@@ -1,6 +1,9 @@
 package com.example.storyai.di
 
 import com.example.storyai.data.network.StoryService
+import com.google.firebase.ktx.Firebase
+import com.google.firebase.remoteconfig.FirebaseRemoteConfig
+import com.google.firebase.remoteconfig.ktx.remoteConfig
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
 import dagger.Module
 import dagger.Provides
@@ -49,5 +52,11 @@ object AppModule {
     @Singleton
     fun provideStoryService(retrofit: Retrofit): StoryService {
         return retrofit.create(StoryService::class.java)
+    }
+
+    @Provides
+    @Singleton
+    fun provideRemoteConfig(): FirebaseRemoteConfig {
+        return Firebase.remoteConfig
     }
 }

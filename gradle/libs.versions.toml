@@ -45,6 +45,7 @@ androidx-hilt-navigation-compose = { group = "androidx.hilt", name = "hilt-navig
 firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebaseBom"}
 firebase-auth = { group = "com.google.firebase", name = "firebase-auth" }
 firebase-analytics = { group = "com.google.firebase", name = "firebase-analytics" }
+firebase-config-ktx = { group = "com.google.firebase", name = "firebase-config-ktx" }
 androidx-navigation-compose = { group = "androidx.navigation", name = "navigation-compose", version.ref = "navigationCompose" }
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinxSerializationJson" }
 retrofit-kotlinx-serialization-converter = { group = "com.jakewharton.retrofit", name = "retrofit2-kotlinx-serialization-converter", version.ref = "retrofitKotlinxSerializationConverter" }
