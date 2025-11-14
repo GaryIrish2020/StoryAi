@@ -24,9 +24,8 @@ fun NavGraph(startDestination: String) {
             route = "chat/{storyId}",
             arguments = listOf(navArgument("storyId") { type = NavType.StringType })
         ) {
-            val storyId = it.arguments?.getString("storyId")
-            requireNotNull(storyId) { "Story ID not found" }
-            ChatScreen(storyId = storyId)
+            // storyId is now retrieved by the ViewModel using SavedStateHandle
+            ChatScreen(navController = navController)
         }
     }
 }
