@@ -7,7 +7,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import com.example.storyai.navigation.NavGraph
 import com.example.storyai.ui.theme.StoryAiTheme
 import dagger.hilt.android.AndroidEntryPoint
@@ -16,15 +16,14 @@ import dagger.hilt.android.AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        installSplashScreen() // Installs the custom splash screen
         setContent {
             StoryAiTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    val loginViewModel: LoginViewModel = hiltViewModel()
-                    val startDestination = if (loginViewModel.hasUser()) "home" else "login"
-                    NavGraph(startDestination = startDestination)
+                    NavGraph()
                 }
             }
         }

@@ -7,7 +7,12 @@ import androidx.lifecycle.viewModelScope
 import com.example.storyai.data.Message
 import com.example.storyai.data.StoryPreset
 import com.example.storyai.data.repository.StoryRepository
-import com.example.storyai.data.network.HistoryRequest
+import com.example.storyai.data.network.Content
+import com.example.storyai.data.network.GetChoicesRequest
+import com.example.storyai.data.network.GetDialogueRequest
+import com.example.storyai.data.network.Part
+import com.example.storyai.data.network.StartStoryRequest
+import com.google.firebase.auth.FirebaseAuth
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -16,23 +21,14 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import retrofit2.HttpException
-import javax.inject.Inject
 import java.util.UUID
-
-sealed interface ChatUiState {
-    object Loading : ChatUiState
-    object Success : ChatUiState
-    data class Error(val message: String) : ChatUiState
-}
+import javax.inject.Inject
 
 @HiltViewModel
 class ChatViewModel @Inject constructor(
     private val storyRepository: StoryRepository,
-    private val savedStateHandle: SavedStateHandle
+    savedStateHandle: SavedStateHandle
 ) : ViewModel() {
-
-    private val _uiState = MutableStateFlow<ChatUiState>(ChatUiState.Loading)
-    val uiState: StateFlow<ChatUiState> = _uiState.asStateFlow()
 
     private val _messages = MutableStateFlow<List<Message>>(emptyList())
     val messages: StateFlow<List<Message>> = _messages.asStateFlow()
@@ -40,150 +36,239 @@ class ChatViewModel @Inject constructor(
     private val _choices = MutableStateFlow<List<String>>(emptyList())
     val choices: StateFlow<List<String>> = _choices.asStateFlow()
 
-    private val conversationHistory = mutableListOf<String>()
-    private var messageCount = 0
-    private val maxMessages = 10
+    private val _isLoading = MutableStateFlow(false)
+    val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
+
+    private val _isPaused = MutableStateFlow(false)
+    val isPaused: StateFlow<Boolean> = _isPaused.asStateFlow()
+
+    private val _isNewStory = MutableStateFlow(false)
+    val isNewStory: StateFlow<Boolean> = _isNewStory.asStateFlow()
+
+    private val conversationHistory = mutableListOf<Content>()
+    private val storyId: String = savedStateHandle.get<String>("storyId")!!
+    private val userId: String = FirebaseAuth.getInstance().currentUser?.uid ?: "anonymous"
 
     private var isGenerating = false
     private var currentPreset: StoryPreset? = null
+    private var messageCount = 0
+    private val maxMessages = 10
+    private val INTER_MESSAGE_BUFFER_MS = 250L
 
     init {
-        loadStoryPresetAndStart()
+        _isNewStory.value = savedStateHandle.get<Boolean>("isNewStory") ?: false
+        if (_isNewStory.value) {
+            beginStory()
+        }
     }
 
-    private fun loadStoryPresetAndStart() {
-        val storyId: String? = savedStateHandle.get<String>("storyId")
-        if (storyId == null) {
-            Log.e("ChatViewModel", "StoryId not found in SavedStateHandle")
+    fun beginStory() {
+        if (_messages.value.isNotEmpty() && !_isNewStory.value) return
+
+        if (userId == "anonymous") {
+            handleError("Authentication Required", Exception("Please log in to begin a story."))
             return
         }
 
         viewModelScope.launch {
+            _isLoading.value = true
             try {
                 val preset = storyRepository.getStoryPreset(storyId)
-                if (preset == null) {
-                    Log.e("ChatViewModel", "Story preset not found for ID: $storyId")
-                    return@launch
-                }
+                    ?: throw Exception("Story preset not found for ID: $storyId")
                 currentPreset = preset
-                startStory()
+
+                val request = StartStoryRequest(
+                    userId = userId,
+                    storyId = storyId,
+                    systemPrompt = preset.systemPrompt,
+                    initialHistory = preset.initialHistory,
+                    characterRoles = preset.characterRoles
+                )
+                val response = storyRepository.startOrContinueStory(request)
+
+                if (response.error != null) {
+                    throw Exception(response.error)
+                }
+
+                conversationHistory.clear()
+                response.conversationHistory?.let { history ->
+                    conversationHistory.addAll(history)
+                }
+
+                val uiMessages = convertHistoryToMessages(conversationHistory, if (_isNewStory.value) preset.initialHistory.size else 0)
+                _messages.value = uiMessages
+
+                isGenerating = true
+                if (_isNewStory.value) {
+                    messageCount = 0
+                    fetchNextDialogueLine(userMessage = "", showLoading = true)
+                } else {
+                    messageCount = uiMessages.size
+                    if (messageCount < maxMessages) {
+                        fetchNextDialogueLine(userMessage = "", showLoading = true)
+                    } else {
+                        generateChoices()
+                    }
+                }
+
             } catch (e: Exception) {
-                Log.e("ChatViewModel", "Error loading initial story preset: ", e)
+                handleError("Failed to begin story", e)
+                isGenerating = false
+            } finally {
+                _isLoading.value = false
             }
         }
     }
 
-    private fun startStory() {
-        if (isGenerating || currentPreset == null) return
-        isGenerating = true
-
-        _uiState.value = ChatUiState.Loading
-        _messages.value = emptyList()
-        _choices.value = emptyList()
-        conversationHistory.clear()
-        messageCount = 0
-
-        viewModelScope.launch {
-            val preset = currentPreset!!
-            val initialPrompt = preset.prompt_template
-                .replace("{char1_name}", preset.char1_name)
-                .replace("{char2_name}", preset.char2_name)
-                .replace("{bg_char1_name}", preset.bg_char1_name)
-                .replace("{bg_char2_name}", preset.bg_char2_name)
-            
-            // --- CRITICAL FIX: Add the INITIAL PROMPT AS A SYSTEM MESSAGE ---
-            conversationHistory.add("SYSTEM_CONTEXT: $initialPrompt")
-            
-            // 2. Start the conversation loop
-            fetchNextDialogueLine(isFirstAttempt = true)
-        }
-    }
-
-    private fun fetchNextDialogueLine(isFirstAttempt: Boolean = false) {
-        if (currentPreset == null) return
-
-        if (messageCount >= maxMessages) {
-            generateChoices()
-            return
-        }
+    private fun fetchNextDialogueLine(userMessage: String, isFirstAttempt: Boolean = false, showLoading: Boolean = true) {
+        if (userId == "anonymous") return
+        if (showLoading) _isLoading.value = true
 
         viewModelScope.launch {
             try {
-                val requestBody = HistoryRequest(history = conversationHistory)
-                val response = storyRepository.generateDialogue(requestBody)
+                val request = GetDialogueRequest(
+                    userId = userId,
+                    storyId = storyId,
+                    conversationHistory = conversationHistory,
+                    userMessage = userMessage,
+                    characterRoles = currentPreset?.characterRoles ?: emptyMap()
+                )
+                val response = storyRepository.getNextDialogueLine(request)
 
-                val aiResponseText = "${response.dialogue.characterName}: ${response.dialogue.dialogueLine}"
-                conversationHistory.add(aiResponseText)
+                if (response.error != null) throw HttpException(retrofit2.Response.error<Any>(response.status.toInt(), okhttp3.ResponseBody.create(null, response.error)))
+
+                response.fullHistory?.let { history ->
+                    conversationHistory.clear()
+                    conversationHistory.addAll(history)
+                }
+
+                val newDialogueText = response.newDialogue ?: throw Exception("Server did not return newDialogue.")
 
                 val newMessage = Message(
-                    author = response.dialogue.characterName,
-                    text = response.dialogue.dialogueLine,
+                    author = extractAuthorFromDialogueLine(newDialogueText),
+                    text = extractTextFromDialogueLine(newDialogueText),
                     timestamp = System.currentTimeMillis(),
                     isAnimated = false
                 )
-
                 _messages.update { it + newMessage }
                 messageCount++
 
             } catch (e: HttpException) {
                 if (e.code() == 503 && isFirstAttempt) {
-                    Log.w("ChatViewModel", "Server busy (503), retrying after delay...")
                     delay(2000)
-                    fetchNextDialogueLine(isFirstAttempt = false)
+                    fetchNextDialogueLine(userMessage, isFirstAttempt = false, showLoading = showLoading)
                 } else {
-                    Log.e("ChatViewModel", "Error fetching next dialogue line: ", e)
+                    handleError("Failed to generate next line", e)
                     isGenerating = false
                 }
             } catch (e: Exception) {
-                Log.e("ChatViewModel", "Error fetching next dialogue line: ", e)
+                handleError("Failed to generate next line", e)
                 isGenerating = false
+            } finally {
+                if (showLoading) _isLoading.value = false
             }
         }
     }
 
-    private fun generateChoices() {
-        isGenerating = false
-        viewModelScope.launch {
-            try {
-                val requestBody = HistoryRequest(history = conversationHistory)
-                val choiceResponse = storyRepository.getChoices(requestBody)
-                _choices.value = choiceResponse.choices
-            } catch (e: Exception) {
-                Log.e("ChatViewModel", "Error generating choices: ", e)
-                _choices.value = listOf("Error generating choices.")
+    fun togglePause() {
+        _isPaused.value = !_isPaused.value
+        isGenerating = !_isPaused.value
+        if (!_isPaused.value) {
+            if (messageCount > 0 && messageCount < maxMessages) {
+                onAnimationFinished(_messages.value.last().id)
             }
         }
+    }
+
+    private fun convertHistoryToMessages(history: List<Content>, initialHistorySize: Int): List<Message> {
+        val messagesToSkip = if (initialHistorySize > 0) 1 + initialHistorySize else 0
+
+        return history
+            .drop(messagesToSkip)
+            .mapNotNull { content ->
+                val text = content.parts.firstOrNull()?.text ?: return@mapNotNull null
+                val authorAndText = parseAuthorAndTextFromHistoryLine(text)
+                authorAndText?.let {
+                    Message(
+                        author = it.first,
+                        text = it.second,
+                        timestamp = System.currentTimeMillis(),
+                        isAnimated = true
+                    )
+                }
+            }
+    }
+
+    // --- FIX: Trim quotes from historical messages ---
+    private fun parseAuthorAndTextFromHistoryLine(line: String): Pair<String, String>? {
+        val parts = line.split(": ", limit = 2)
+        return if (parts.size >= 2) {
+            Pair(parts[0], parts[1].trim().removeSurrounding("\""))
+        } else if (line.startsWith("USER: ")) {
+            Pair("You", line.removePrefix("USER: ").trim().removeSurrounding("\""))
+        } else {
+            null
+        }
+    }
+
+    private fun extractAuthorFromDialogueLine(dialogueLine: String) = dialogueLine.split(": ", limit = 2).getOrElse(0) { "Narrator" }
+    
+    // --- FIX: Trim quotes from new messages ---
+    private fun extractTextFromDialogueLine(dialogueLine: String): String {
+        val text = dialogueLine.split(": ", limit = 2).getOrElse(1) { dialogueLine }
+        return text.trim().removeSurrounding("\"")
     }
 
     fun onAnimationFinished(messageId: String) {
         _messages.update { currentMessages ->
-            currentMessages.map { m ->
-                if (m.id == messageId) m.copy(isAnimated = true) else m
-            }
+            currentMessages.map { if (it.id == messageId) it.copy(isAnimated = true) else it }
         }
-        if (isGenerating) {
+        if (!_isPaused.value && isGenerating && messageCount < maxMessages) {
             viewModelScope.launch {
-                delay(1000)
-                fetchNextDialogueLine()
+                delay(INTER_MESSAGE_BUFFER_MS)
+                fetchNextDialogueLine(userMessage = "", showLoading = false)
             }
+        } else if (!_isPaused.value && isGenerating && messageCount >= maxMessages) {
+            generateChoices()
         }
     }
 
     fun onUserChoiceSelected(choiceText: String) {
-        if (currentPreset == null) return
+        if (_isPaused.value) return
 
-        conversationHistory.add("USER: $choiceText")
-        _messages.update { it + Message(
-            author = "You",
-            text = choiceText,
-            timestamp = System.currentTimeMillis(),
-            isAnimated = true
-        ) }
-
+        _isLoading.value = true
+        _messages.update { it + Message(author = "You", text = choiceText, timestamp = System.currentTimeMillis(), isAnimated = true) }
+        conversationHistory.add(Content("user", listOf(Part("USER: $choiceText"))))
         _choices.value = emptyList()
 
         messageCount = 0
         isGenerating = true
-        fetchNextDialogueLine()
+        fetchNextDialogueLine(userMessage = choiceText, showLoading = true)
+    }
+
+    private fun generateChoices() {
+        if (_isPaused.value) return
+
+        _isLoading.value = true
+        isGenerating = false
+        viewModelScope.launch {
+            try {
+                val request = GetChoicesRequest(userId, storyId, conversationHistory)
+                val response = storyRepository.getChoices(request)
+                if (response.error != null) throw Exception(response.error)
+                _choices.value = response.choices ?: emptyList()
+            } catch (e: Exception) {
+                handleError("Failed to generate choices", e)
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
+    private fun handleError(message: String, e: Exception) {
+        Log.e("ChatViewModel", "$message: ", e)
+        val errorText = if (e is HttpException) "Error ${e.code()}: ${e.message()}. The story couldn't continue. Please try again."
+        else "An unexpected error occurred: ${e.localizedMessage}. Please check your connection."
+        _messages.update { it + Message(author = "System", text = errorText, timestamp = System.currentTimeMillis(), isAnimated = true) }
     }
 }

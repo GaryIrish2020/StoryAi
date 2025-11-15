@@ -1,16 +1,15 @@
-<resources xmlns:tools="http://schemas.android.com/tools">
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
     <!-- Base application theme. -->
-    <style name="Theme.StoryAi" parent="Theme.MaterialComponents.DayNight.DarkActionBar">
-        <!-- Primary brand color. -->
-        <item name="colorPrimary">@color/purple_500</item>
-        <item name="colorPrimaryVariant">@color/purple_700</item>
-        <item name="colorOnPrimary">@color/white</item>
-        <!-- Secondary brand color. -->
-        <item name="colorSecondary">@color/teal_200</item>
-        <item name="colorSecondaryVariant">@color/teal_700</item>
-        <item name="colorOnSecondary">@color/black</item>
-        <!-- Status bar color. -->
-        <item name="android:statusBarColor">?attr/colorPrimaryVariant</item>
-        <!-- Customize your theme here. -->
+    <style name="Theme.StoryAi" parent="android:Theme.Material.Light.NoActionBar" />
+
+    <!-- Splash Screen Theme -->
+    <style name="Theme.StoryAi.Splash" parent="Theme.SplashScreen">
+        <!-- Set the background to black to match the video player -->
+        <item name="windowSplashScreenBackground">@android:color/black</item>
+        <!-- Remove the animated icon -->
+        <item name="windowSplashScreenAnimatedIcon">@null</item>
+        <!-- Set the theme to return to after the splash screen -->
+        <item name="postSplashScreenTheme">@style/Theme.StoryAi</item>
     </style>
 </resources>

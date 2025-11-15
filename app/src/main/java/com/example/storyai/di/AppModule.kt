@@ -1,6 +1,7 @@
 package com.example.storyai.di
 
 import com.example.storyai.data.network.StoryService
+import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.ktx.Firebase
 import com.google.firebase.remoteconfig.FirebaseRemoteConfig
 import com.google.firebase.remoteconfig.ktx.remoteConfig
@@ -63,5 +64,11 @@ object AppModule {
     @Singleton
     fun provideRemoteConfig(): FirebaseRemoteConfig {
         return Firebase.remoteConfig
+    }
+
+    @Provides
+    @Singleton
+    fun provideFirestore(): FirebaseFirestore {
+        return FirebaseFirestore.getInstance()
     }
 }

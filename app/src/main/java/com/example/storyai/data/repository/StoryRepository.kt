@@ -2,11 +2,15 @@ package com.example.storyai.data.repository
 
 import com.example.storyai.data.StoryPreset
 import com.example.storyai.data.StoryPresetsResponse
-import com.example.storyai.data.network.ChoiceResponse
-import com.example.storyai.data.network.DialogueResponse
-import com.example.storyai.data.network.HistoryRequest
+import com.example.storyai.data.network.ApiResponse
+import com.example.storyai.data.network.GetChoicesRequest
+import com.example.storyai.data.network.GetDialogueRequest
+import com.example.storyai.data.network.StartStoryRequest
 import com.example.storyai.data.network.StoryService
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.remoteconfig.FirebaseRemoteConfig
+import com.google.firebase.remoteconfig.ktx.remoteConfigSettings
 import kotlinx.coroutines.tasks.await
 import kotlinx.serialization.InternalSerializationApi
 import kotlinx.serialization.json.Json
@@ -16,36 +20,46 @@ import javax.inject.Inject
 class StoryRepository @Inject constructor(
     private val apiService: StoryService,
     private val remoteConfig: FirebaseRemoteConfig,
+    private val firestore: FirebaseFirestore,
     private val json: Json
 ) {
 
     private var storyPresets: List<StoryPreset>? = null
-
-    /**
-     * Sends the current conversation history to the server to generate the next dialogue line.
-     * @param request Contains the List<String> history. (Uses concrete HistoryRequest)
-     */
-    suspend fun generateDialogue(request: HistoryRequest): DialogueResponse {
-        return apiService.generateDialogue(request)
+    
+    init {
+        val configSettings = remoteConfigSettings {
+            minimumFetchIntervalInSeconds = 0
+        }
+        remoteConfig.setConfigSettingsAsync(configSettings)
     }
 
-    /**
-     * Sends the current conversation history to the server to generate story choices.
-     * @param request Contains the List<String> history. (Uses concrete HistoryRequest)
-     */
-    suspend fun getChoices(request: HistoryRequest): ChoiceResponse {
+    suspend fun checkIfStoryExists(storyId: String): Boolean {
+        val userId = FirebaseAuth.getInstance().currentUser?.uid ?: return false
+        val docId = "${userId}_${storyId}"
+        return try {
+            firestore.collection("saved_stories").document(docId).get().await().exists()
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    suspend fun startOrContinueStory(request: StartStoryRequest): ApiResponse {
+        return apiService.startOrContinueStory(request)
+    }
+
+    suspend fun getNextDialogueLine(request: GetDialogueRequest): ApiResponse {
+        return apiService.getNextDialogueLine(request)
+    }
+
+    suspend fun getChoices(request: GetChoicesRequest): ApiResponse {
         return apiService.getChoices(request)
     }
     
     suspend fun getStoryPresets(): List<StoryPreset> {
         if (storyPresets != null) return storyPresets!!
 
-        // Assume fetchAndActivate is handled elsewhere, but perform a quick fetch if needed
-        remoteConfig.fetchAndActivate().await() 
-        
+        remoteConfig.fetchAndActivate().await()
         val jsonString = remoteConfig.getString("story_presets")
-        // NOTE: This assumes StoryPresetsResponse has been defined and includes
-        // the list of StoryPreset objects.
         val response = json.decodeFromString<StoryPresetsResponse>(jsonString)
         storyPresets = response.story_presets
         return response.story_presets

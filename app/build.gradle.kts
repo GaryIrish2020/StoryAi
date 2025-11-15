@@ -59,6 +59,7 @@ dependencies {
     coreLibraryDesugaring(libs.desugar.jdk.libs)
 
     implementation(libs.androidx.core.ktx)
+    implementation("androidx.core:core-splashscreen:1.0.1") // Splash screen dependency
     implementation(libs.androidx.appcompat)
     implementation(libs.material)
     implementation(libs.androidx.activity.compose)
@@ -67,19 +68,27 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
+    // --- FIX: Using full coordinates for Material Icons ---
+    implementation("androidx.compose.material:material-icons-extended:1.6.7")
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.hilt.android)
     ksp(libs.hilt.android.compiler)
     implementation(libs.androidx.hilt.navigation.compose)
     implementation(libs.retrofit)
     implementation(libs.retrofit.kotlinx.serialization.converter)
-    implementation(libs.okhttp.logging.interceptor) // Added this line
+    implementation(libs.okhttp.logging.interceptor)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.coil.compose)
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.auth)
     implementation(libs.firebase.analytics)
     implementation(libs.firebase.config.ktx)
+    implementation("com.google.firebase:firebase-firestore-ktx") // Added Firestore dependency
+
+    // ExoPlayer (Media3) for video playback - FIX: Using full coordinates
+    implementation("androidx.media3:media3-exoplayer:1.3.1")
+    implementation("androidx.media3:media3-ui:1.3.1")
+
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
