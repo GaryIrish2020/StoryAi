@@ -1,6 +1,5 @@
 package com.example.storyai.ui
 
-import android.util.Log
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -72,7 +71,7 @@ fun ChatScreen(
 
     Box(modifier = Modifier.fillMaxSize()) {
         Image(
-            painter = painterResource(id = R.drawable.backround),
+            painter = painterResource(id = R.drawable.background), // Corrected filename
             contentDescription = "Background",
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize()
@@ -91,7 +90,6 @@ fun ChatScreen(
                         }
                     },
                     actions = {
-                        // --- FIX: This logic now correctly shows the button on the "Continue" screen ---
                         if (!isNewStory || messages.isNotEmpty()) {
                             IconButton(onClick = { viewModel.togglePause() }) {
                                 if (isPaused) Icon(Icons.Filled.PlayArrow, "Resume Story")
@@ -109,8 +107,6 @@ fun ChatScreen(
                 ) {
                     val showContinueButton = messages.isEmpty() && !isLoading && !isNewStory
 
-                    // The LazyColumn and choices are now always in the composition,
-                    // which simplifies the layout logic. They are just empty when not needed.
                     Column(modifier = Modifier.fillMaxSize()) {
                         LazyColumn(
                             modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
@@ -129,7 +125,7 @@ fun ChatScreen(
                                     }
                                 )
                             }
-                            if (isLoading && !isPaused && messages.isNotEmpty()) { // Only show typing indicator if there are messages
+                            if (isLoading && !isPaused && messages.isNotEmpty()) {
                                 item {
                                     Row(
                                         modifier = Modifier.fillMaxWidth().padding(8.dp),

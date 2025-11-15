@@ -37,7 +37,7 @@ fun HomeScreen(navController: NavController, viewModel: HomeViewModel = hiltView
 
     Box(modifier = Modifier.fillMaxSize()) {
         Image(
-            painter = painterResource(id = R.drawable.backround),
+            painter = painterResource(id = R.drawable.background), // Corrected filename
             contentDescription = "Background",
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize()
@@ -50,7 +50,7 @@ fun HomeScreen(navController: NavController, viewModel: HomeViewModel = hiltView
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(paddingValues), // Apply insets padding
+                    .padding(paddingValues),
                 contentPadding = PaddingValues(vertical = 16.dp)
             ) {
                 groupedStories.forEach { (genre, storiesInGenre) ->
