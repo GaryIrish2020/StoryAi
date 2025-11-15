@@ -8,8 +8,8 @@
             <InsightsFilterSettings>
               <option name="connection">
                 <ConnectionSetting>
-                  <option name="appId" value="com.example.storyai" />
-                  <option name="mobileSdkAppId" value="1:167717772145:android:f2219c7cf00640941ef4d0" />
+                  <option name="appId" value="com.GirishDevelopment.storyai" />
+                  <option name="mobileSdkAppId" value="1:167717772145:android:7cdd71119f63bd201ef4d0" />
                   <option name="projectId" value="storyai-6b611" />
                   <option name="projectNumber" value="167717772145" />
                 </ConnectionSetting>

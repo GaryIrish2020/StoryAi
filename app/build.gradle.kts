@@ -8,15 +8,15 @@ plugins {
 }
 
 android {
-    namespace = "com.example.storyai"
+    namespace = "com.GirishDevelopment.storyai"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.example.storyai"
+        applicationId = "com.GirishDevelopment.storyai"
         minSdk = 24
         targetSdk = 34
-        versionCode = 2 // Updated version code
-        versionName = "1.01" // Updated version name
+        versionCode = 3
+        versionName = "1.02"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
