@@ -1,5 +1,6 @@
 package com.example.storyai.ui
 
+import android.util.Log
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -19,6 +20,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
@@ -35,6 +37,9 @@ import com.example.storyai.R
 import com.example.storyai.data.Message
 import com.example.storyai.ui.theme.StoryAiTheme
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
@@ -52,12 +57,17 @@ fun ChatScreen(
     val isLoading by viewModel.isLoading.collectAsState()
     val isPaused by viewModel.isPaused.collectAsState()
     val isNewStory by viewModel.isNewStory.collectAsState()
+    val characterRoles by viewModel.characterRoles.collectAsState()
     val listState = rememberLazyListState()
+    val coroutineScope = rememberCoroutineScope()
 
-    LaunchedEffect(messages.size) {
-        if (messages.isNotEmpty()) {
-            listState.animateScrollToItem(messages.size)
-        }
+    LaunchedEffect(Unit) {
+        snapshotFlow { listState.layoutInfo.totalItemsCount }
+            .distinctUntilChanged()
+            .filter { it > 0 }
+            .collect {
+                listState.animateScrollToItem(listState.layoutInfo.totalItemsCount - 1)
+            }
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -81,7 +91,8 @@ fun ChatScreen(
                         }
                     },
                     actions = {
-                        if (messages.isNotEmpty() || !isNewStory) {
+                        // --- FIX: This logic now correctly shows the button on the "Continue" screen ---
+                        if (!isNewStory || messages.isNotEmpty()) {
                             IconButton(onClick = { viewModel.togglePause() }) {
                                 if (isPaused) Icon(Icons.Filled.PlayArrow, "Resume Story")
                                 else Icon(Icons.Filled.Pause, "Pause Story")
@@ -96,61 +107,68 @@ fun ChatScreen(
                         .fillMaxSize()
                         .padding(paddingValues)
                 ) {
-                    val showStartButton = messages.isEmpty() && !isLoading && !isNewStory
+                    val showContinueButton = messages.isEmpty() && !isLoading && !isNewStory
 
-                    if (showStartButton) {
+                    // The LazyColumn and choices are now always in the composition,
+                    // which simplifies the layout logic. They are just empty when not needed.
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        LazyColumn(
+                            modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
+                            state = listState,
+                            contentPadding = PaddingValues(vertical = 8.dp)
+                        ) {
+                            itemsIndexed(messages, key = { _, message -> message.id }) { index, message ->
+                                MessageItem(
+                                    message = message,
+                                    characterRoles = characterRoles.keys.toList(),
+                                    onAnimationFinished = { viewModel.onAnimationFinished(message.id) },
+                                    onCharacterTyped = {
+                                        coroutineScope.launch {
+                                            listState.animateScrollToItem(listState.layoutInfo.totalItemsCount)
+                                        }
+                                    }
+                                )
+                            }
+                            if (isLoading && !isPaused && messages.isNotEmpty()) { // Only show typing indicator if there are messages
+                                item {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(8.dp),
+                                        horizontalArrangement = Arrangement.Center
+                                    ) {
+                                        CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                                    }
+                                }
+                            }
+                        }
+
+                        if (choices.isNotEmpty()) {
+                            FlowRow(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f))
+                                    .padding(8.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                choices.forEach { choice ->
+                                    Button(
+                                        onClick = { viewModel.onUserChoiceSelected(choice) },
+                                        enabled = !isPaused && !isLoading
+                                    ) {
+                                        Text(choice)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if (showContinueButton) {
                         Box(
                             modifier = Modifier.fillMaxSize(),
                             contentAlignment = Alignment.Center
                         ) {
                             Button(onClick = { viewModel.beginStory() }) {
                                 Text("Continue Story")
-                            }
-                        }
-                    } else {
-                        Column(modifier = Modifier.fillMaxSize()) {
-                            LazyColumn(
-                                modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
-                                state = listState,
-                                contentPadding = PaddingValues(vertical = 8.dp)
-                            ) {
-                                itemsIndexed(messages, key = { _, message -> message.id }) { index, message ->
-                                    MessageItem(
-                                        message = message,
-                                        index = index,
-                                        onAnimationFinished = { viewModel.onAnimationFinished(message.id) }
-                                    )
-                                }
-                                if (isLoading && !isPaused) {
-                                    item {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth().padding(8.dp),
-                                            horizontalArrangement = Arrangement.Center
-                                        ) {
-                                            CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                                        }
-                                    }
-                                }
-                            }
-
-                            if (choices.isNotEmpty()) {
-                                FlowRow(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f))
-                                        .padding(8.dp),
-                                    horizontalArrangement = Arrangement.Center,
-                                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    choices.forEach { choice ->
-                                        Button(
-                                            onClick = { viewModel.onUserChoiceSelected(choice) },
-                                            enabled = !isPaused && !isLoading
-                                        ) {
-                                            Text(choice)
-                                        }
-                                    }
-                                }
                             }
                         }
                     }
@@ -169,39 +187,39 @@ fun ChatScreen(
     }
 }
 
-// --- FIX: New helper function to parse and color the text ---
 @Composable
-fun formatMessageText(text: String, isNarrator: Boolean): AnnotatedString {
+private fun createFormattedText(text: String, author: String): AnnotatedString {
     val blueColor = MaterialTheme.colorScheme.primary
-    return buildAnnotatedString {
-        val finalText = if (isNarrator) "($text)" else text
 
-        // Regex to find **text** or (text)
-        val regex = if (isNarrator) Regex("""(\(.*\))""") else Regex("""(\*\*[^*]+\*\*)""")
+    if (author == "Narrator") {
+        return buildAnnotatedString {
+            withStyle(style = SpanStyle(color = blueColor)) {
+                append("($text)")
+            }
+        }
+    }
+
+    return buildAnnotatedString {
+        val regex = Regex("""(\*\*[^*]+\*\*)""")
         var lastIndex = 0
-        
-        regex.findAll(finalText).forEach { matchResult ->
+
+        regex.findAll(text).forEach { matchResult ->
             val match = matchResult.value
             val startIndex = matchResult.range.first
-            val endIndex = matchResult.range.last + 1
-            
-            // Append the text before the match
+
             if (startIndex > lastIndex) {
-                append(finalText.substring(lastIndex, startIndex))
+                append(text.substring(lastIndex, startIndex))
             }
-            
-            // Append the matched text with blue color
+
             withStyle(style = SpanStyle(color = blueColor, fontWeight = FontWeight.Bold)) {
-                // Remove the markdown characters for display
-                val cleanText = match.removeSurrounding("**").removeSurrounding("(", ")")
-                append(if (isNarrator) "($cleanText)" else cleanText)
+                append(match.removeSurrounding("**"))
             }
-            lastIndex = endIndex
+
+            lastIndex = matchResult.range.last + 1
         }
-        
-        // Append any remaining text after the last match
-        if (lastIndex < finalText.length) {
-            append(finalText.substring(lastIndex))
+
+        if (lastIndex < text.length) {
+            append(text.substring(lastIndex))
         }
     }
 }
@@ -209,23 +227,37 @@ fun formatMessageText(text: String, isNarrator: Boolean): AnnotatedString {
 @Composable
 fun MessageItem(
     message: Message,
-    index: Int,
-    onAnimationFinished: () -> Unit
+    characterRoles: List<String>,
+    onAnimationFinished: () -> Unit,
+    onCharacterTyped: () -> Unit
 ) {
-    val characterColors = remember {
-        mapOf("Narrator" to Color(0xFFB0BEC5), "You" to Color(0xFFD3E0EA), "System" to Color.Gray)
+    val storyCharacterColors = remember(characterRoles) {
+        val colors = listOf(
+            Color(0xFF003366),
+            Color(0xFF4A0033),
+            Color(0xFF004D40),
+            Color(0xFF5E3A00)
+        )
+        characterRoles.mapIndexed { index, name -> name to colors[index % colors.size] }.toMap()
     }
-    val defaultAIChatColors = listOf(MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.secondaryContainer)
-    val bubbleColor = characterColors.getOrElse(message.author) { defaultAIChatColors[index % defaultAIChatColors.size] }
+
+    val bubbleColor = when (message.author) {
+        "You" -> Color(0xFFD3E0EA)
+        "System" -> Color.Gray
+        "Narrator" -> Color(0xFFB0BEC5)
+        else -> storyCharacterColors[message.author] ?: Color(0xFF37474F)
+    }
+    
     val alignment = when (message.author) {
         "You" -> Alignment.End
         "Narrator", "System" -> Alignment.CenterHorizontally
         else -> Alignment.Start
     }
+    
     val horizontalArrangement = when (message.author) {
         "You" -> Arrangement.End
         "Narrator", "System" -> Arrangement.Center
-        else -> Arrangement.Start
+        else -> Arrangement.Start 
     }
 
     Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = horizontalArrangement) {
@@ -241,25 +273,27 @@ fun MessageItem(
                 }
             }
             Card(shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = bubbleColor), modifier = Modifier.widthIn(max = 300.dp)) {
-                SelectionContainer {
-                    var displayedText by remember { mutableStateOf<AnnotatedString>(AnnotatedString("")) }
-                    
-                    val formattedText = formatMessageText(text = message.text, isNarrator = message.author == "Narrator")
+                Box(modifier = Modifier.background(Color.Black.copy(alpha = 0.2f))) {
+                    SelectionContainer {
+                        var displayedText by remember { mutableStateOf<AnnotatedString>(AnnotatedString("")) }
+                        
+                        val formattedText = createFormattedText(text = message.text, author = message.author)
 
-                    if (!message.isAnimated) {
-                        LaunchedEffect(message.id) {
-                            // Animate the annotated string
-                            val fullText = formattedText.text
-                            for (i in 1..fullText.length) {
-                                displayedText = formattedText.subSequence(0, i)
-                                delay(50)
+                        if (!message.isAnimated) {
+                            LaunchedEffect(message.id) {
+                                val fullText = formattedText.text
+                                for (i in 1..fullText.length) {
+                                    displayedText = formattedText.subSequence(0, i)
+                                    onCharacterTyped()
+                                    delay(50)
+                                }
+                                onAnimationFinished()
                             }
-                            onAnimationFinished()
+                        } else {
+                            displayedText = formattedText
                         }
-                    } else {
-                        displayedText = formattedText
+                        Text(displayedText, modifier = Modifier.padding(12.dp), color = Color.White)
                     }
-                    Text(displayedText, modifier = Modifier.padding(12.dp))
                 }
             }
         }
@@ -276,6 +310,5 @@ private fun formatTimestamp(timestamp: Long): String {
 @Composable
 fun ChatScreenPreview() {
     StoryAiTheme {
-        // ChatScreen(navController = rememberNavController())
     }
 }

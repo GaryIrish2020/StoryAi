@@ -45,6 +45,9 @@ class ChatViewModel @Inject constructor(
     private val _isNewStory = MutableStateFlow(false)
     val isNewStory: StateFlow<Boolean> = _isNewStory.asStateFlow()
 
+    private val _characterRoles = MutableStateFlow<Map<String, String>>(emptyMap())
+    val characterRoles: StateFlow<Map<String, String>> = _characterRoles.asStateFlow()
+
     private val conversationHistory = mutableListOf<Content>()
     private val storyId: String = savedStateHandle.get<String>("storyId")!!
     private val userId: String = FirebaseAuth.getInstance().currentUser?.uid ?: "anonymous"
@@ -53,7 +56,7 @@ class ChatViewModel @Inject constructor(
     private var currentPreset: StoryPreset? = null
     private var messageCount = 0
     private val maxMessages = 10
-    private val INTER_MESSAGE_BUFFER_MS = 250L
+    private val INTER_MESSAGE_BUFFER_MS = 50L
 
     init {
         _isNewStory.value = savedStateHandle.get<Boolean>("isNewStory") ?: false
@@ -76,6 +79,7 @@ class ChatViewModel @Inject constructor(
                 val preset = storyRepository.getStoryPreset(storyId)
                     ?: throw Exception("Story preset not found for ID: $storyId")
                 currentPreset = preset
+                _characterRoles.value = preset.characterRoles
 
                 val request = StartStoryRequest(
                     userId = userId,
@@ -95,17 +99,23 @@ class ChatViewModel @Inject constructor(
                     conversationHistory.addAll(history)
                 }
 
-                val uiMessages = convertHistoryToMessages(conversationHistory, if (_isNewStory.value) preset.initialHistory.size else 0)
+                val initialHistorySize = if (_isNewStory.value) preset.initialHistory.size else 0
+                val uiMessages = convertHistoryToMessages(conversationHistory, initialHistorySize)
                 _messages.value = uiMessages
-
+                
                 isGenerating = true
+                
                 if (_isNewStory.value) {
                     messageCount = 0
-                    fetchNextDialogueLine(userMessage = "", showLoading = true)
+                    generateChoices()
                 } else {
                     messageCount = uiMessages.size
-                    if (messageCount < maxMessages) {
-                        fetchNextDialogueLine(userMessage = "", showLoading = true)
+                    val lastMessageRole = conversationHistory.lastOrNull()?.role
+                    if (lastMessageRole == "model") {
+                        generateChoices()
+                    } else if (lastMessageRole == "user") {
+                        val lastUserMessage = conversationHistory.last().parts.firstOrNull()?.text?.removePrefix("USER: ") ?: ""
+                        fetchNextDialogueLine(userMessage = lastUserMessage, showLoading = true)
                     } else {
                         generateChoices()
                     }
@@ -186,37 +196,43 @@ class ChatViewModel @Inject constructor(
         return history
             .drop(messagesToSkip)
             .mapNotNull { content ->
-                val text = content.parts.firstOrNull()?.text ?: return@mapNotNull null
-                val authorAndText = parseAuthorAndTextFromHistoryLine(text)
-                authorAndText?.let {
-                    Message(
-                        author = it.first,
-                        text = it.second,
-                        timestamp = System.currentTimeMillis(),
-                        isAnimated = true
-                    )
+                val rawText = content.parts.firstOrNull()?.text?.trim() ?: return@mapNotNull null
+
+                when (content.role) {
+                    "user" -> {
+                        val userText = rawText.removePrefix("USER:").trim()
+                        if (userText.isNotBlank()) {
+                            Message(
+                                author = "You",
+                                text = userText.removeSurrounding("'").removeSurrounding("\""),
+                                timestamp = System.currentTimeMillis(),
+                                isAnimated = true
+                            )
+                        } else {
+                            null
+                        }
+                    }
+                    "model" -> {
+                        val parts = rawText.split(": ", limit = 2)
+                        val author = parts.getOrElse(0) { "Narrator" }
+                        val text = parts.getOrElse(1) { rawText }.trim().removeSurrounding("'").removeSurrounding("\"")
+                        Message(
+                            author = author,
+                            text = text,
+                            timestamp = System.currentTimeMillis(),
+                            isAnimated = true
+                        )
+                    }
+                    else -> null
                 }
             }
     }
-
-    // --- FIX: Trim quotes from historical messages ---
-    private fun parseAuthorAndTextFromHistoryLine(line: String): Pair<String, String>? {
-        val parts = line.split(": ", limit = 2)
-        return if (parts.size >= 2) {
-            Pair(parts[0], parts[1].trim().removeSurrounding("\""))
-        } else if (line.startsWith("USER: ")) {
-            Pair("You", line.removePrefix("USER: ").trim().removeSurrounding("\""))
-        } else {
-            null
-        }
-    }
-
+    
     private fun extractAuthorFromDialogueLine(dialogueLine: String) = dialogueLine.split(": ", limit = 2).getOrElse(0) { "Narrator" }
     
-    // --- FIX: Trim quotes from new messages ---
     private fun extractTextFromDialogueLine(dialogueLine: String): String {
         val text = dialogueLine.split(": ", limit = 2).getOrElse(1) { dialogueLine }
-        return text.trim().removeSurrounding("\"")
+        return text.trim().removeSurrounding("'").removeSurrounding("\"")
     }
 
     fun onAnimationFinished(messageId: String) {
@@ -238,7 +254,10 @@ class ChatViewModel @Inject constructor(
 
         _isLoading.value = true
         _messages.update { it + Message(author = "You", text = choiceText, timestamp = System.currentTimeMillis(), isAnimated = true) }
-        conversationHistory.add(Content("user", listOf(Part("USER: $choiceText"))))
+        
+        // --- FIX: Do NOT add to local conversationHistory. Let the server handle it. ---
+        // conversationHistory.add(Content("user", listOf(Part("USER: $choiceText"))))
+        
         _choices.value = emptyList()
 
         messageCount = 0

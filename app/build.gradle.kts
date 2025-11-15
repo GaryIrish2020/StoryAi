@@ -15,8 +15,8 @@ android {
         applicationId = "com.example.storyai"
         minSdk = 24
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2 // Updated version code
+        versionName = "1.01" // Updated version name
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -59,7 +59,7 @@ dependencies {
     coreLibraryDesugaring(libs.desugar.jdk.libs)
 
     implementation(libs.androidx.core.ktx)
-    implementation("androidx.core:core-splashscreen:1.0.1") // Splash screen dependency
+    implementation("androidx.core:core-splashscreen:1.0.1")
     implementation(libs.androidx.appcompat)
     implementation(libs.material)
     implementation(libs.androidx.activity.compose)
@@ -68,7 +68,6 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
-    // --- FIX: Using full coordinates for Material Icons ---
     implementation("androidx.compose.material:material-icons-extended:1.6.7")
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.hilt.android)
@@ -83,9 +82,8 @@ dependencies {
     implementation(libs.firebase.auth)
     implementation(libs.firebase.analytics)
     implementation(libs.firebase.config.ktx)
-    implementation("com.google.firebase:firebase-firestore-ktx") // Added Firestore dependency
+    implementation("com.google.firebase:firebase-firestore-ktx")
 
-    // ExoPlayer (Media3) for video playback - FIX: Using full coordinates
     implementation("androidx.media3:media3-exoplayer:1.3.1")
     implementation("androidx.media3:media3-ui:1.3.1")
 
